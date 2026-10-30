@@ -1,0 +1,52 @@
+name: macOS build
+
+on:
+  push:
+    paths:
+      - "game/**"
+      - "macos/**"
+      - ".github/workflows/macos.yml"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Motherload.app and Motherload.dmg
+        run: ./macos/build.sh --dmg
+
+      - name: Inspect bundle
+        run: |
+          plutil -p dist/Motherload.app/Contents/Info.plist
+          lipo -info dist/Motherload.app/Contents/MacOS/ruffle
+          codesign -dv --entitlements - dist/Motherload.app/Contents/MacOS/ruffle
+          codesign --verify --strict --verbose=2 dist/Motherload.app
+
+      - name: Launch smoke test
+        run: |
+          open --stdout "$PWD/ruffle.log" --stderr "$PWD/ruffle.log" dist/Motherload.app
+          sleep 20
+          pgrep -fl "Motherload.app/Contents/MacOS/ruffle"
+          screencapture -x screenshot.png || true
+          pkill -f "Motherload.app/Contents/MacOS/ruffle" || true
+
+      - name: Show player log
+        if: always()
+        run: cat ruffle.log || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Motherload-macOS
+          path: dist/Motherload.dmg
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smoke-test-screenshot
+          path: screenshot.png
+          if-no-files-found: ignore
